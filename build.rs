@@ -5,7 +5,7 @@ fn main() {
     resource.set_icon("assets/app.ico");
     resource.set("FileDescription", "Kiseki Autorun Vault - キセキのオートラン書庫");
     resource.set("ProductName", "Kiseki Autorun Vault");
-    resource.set("ProductVersion", "1.2.0");
+    resource.set("ProductVersion", "1.3.0");
     resource.compile().expect("Windows icon resource compilation failed (Windows SDK / rc.exe required)");
 }
 

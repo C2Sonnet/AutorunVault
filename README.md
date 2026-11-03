@@ -6,21 +6,34 @@
 
 **Kiseki Autorun Vault** は、Windows 11でドライブ文字が割り当てられたボリュームを調べ、ルート直下の `Autorun.ico` / `Autorun.inf` をプレビュー・一括保存するデスクトップアプリです。日本語名：**キセキのオートラン書庫**。
 
-![Rust](https://img.shields.io/badge/Rust-2021-orange) ![Windows](https://img.shields.io/badge/Windows-11-blue) ![Version](https://img.shields.io/badge/version-1.2.0-teal) ![License](https://img.shields.io/badge/license-CC%20BY--SA%204.0-lightgrey)
+![Rust](https://img.shields.io/badge/Rust-2021-orange) ![Windows](https://img.shields.io/badge/Windows-11-blue) ![Version](https://img.shields.io/badge/version-1.3.0-teal) ![License](https://img.shields.io/badge/license-CC%20BY--SA%204.0-lightgrey)
 
 ## 主な機能
 
-**v1.2.0の画面構成**：ウィンドウ上部にドライブのカード一覧、下部に選択ドライブの詳細情報プレビューを配置しました。上下エリアの境界をドラッグして高さを調整できます。
+**v1.3.0の画面構成**：上部は高さ148ptのパーティションカードをウィンドウ幅に合わせて整列させた独立スクロール一覧、下部は詳細情報プレビューです。画面を縦に分割し、下部の表示領域を確保することで、v1.2.0のカード縦伸び・プレビュー領域の圧迫を防ぎます。
 
 - ドライブ文字、ボリューム名、ファイルシステム、総容量と空き容量を一覧表示
 - 各ドライブ直下の `Autorun.ico` と `Autorun.inf` を検出
 - PNG内蔵ICO（16bit/channelを8bit表示用に変換）およびBMP型ICOのプレビュー
 - INFテキストの表示と、Hidden / Read-only / System属性の確認
-- ドライブ検索・検出済みドライブへの絞り込み・対象の選択（上段カード形式、最大6列）
+- ドライブ検索・検出済みドライブへの絞り込み・対象の選択（高さ固定の上段カード形式、最大6列、独立スクロール）
 - 下段に選択ドライブのICO、ボリューム名、容量、ファイル属性、INF内容を表示（INFコピー対応）
 - 実行ファイルの隣に `Autorun_Collection` を作成してまとめて収集
 - 既存ファイルへの上書き確認（上書き／スキップ／キャンセル）
 - コピー結果を `Export_Report.txt` に記録
+
+## v1.3.0での画面崩れ修正
+
+v1.2.0で確認された、カードが異常に縦長になり、下段の詳細プレビューが画面外に押し出される現象を修正するため、一覧の描画方式を変更しました。
+
+- 従来の `horizontal_wrapped` と自動サイズの `Frame::show` を使ったカード並びを廃止
+- `Ui::allocate_exact_size()` で各カードに **幅可変・高さ148pt固定** の矩形を割り当てて描画
+- `ScrollArea::max_height()` で一覧の高さを制限し、余分なカードは縦スクロール
+- 上下を中央パネル内に配置し、下部詳細表示用に高さを確保
+- ログの領域を固定してプレビューを圧迫しないよう変更
+- カード内のチェックボックス操作と、カードクリックによるプレビュー切替を分離
+
+**確認手順**：1380×920、1020×710など複数のウィンドウサイズで、18ドライブ以上を表示した際のカードの高さ・列間隔・詳細パネルの見え方を確認してください。Windows環境での実機検証は未実施です。
 
 ## 動作環境とビルド
 
@@ -42,8 +55,8 @@ cargo build --release
 
 ## 使い方
 
-1. アプリを起動し、**上段のパーティションカード**でドライブ一覧を確認します。
-2. カード内の**ドライブ名**をクリックすると、**下段の詳細領域**にICOプレビュー、INF内容、容量およびファイル属性が表示されます。
+1. アプリを起動し、**上段のパーティションカード**でドライブ一覧を確認します。一覧内はホイールでスクロールできます。
+2. カードの**チェックボックス以外の部分**をクリックすると、**下段の詳細領域**にICOプレビュー、INF内容、容量およびファイル属性が表示されます。
 3. 保存したいドライブをチェックして一括エクスポートします。
 4. 既存ファイルがある場合、上書き・スキップ・キャンセルを選択します。
 5. 出力先の `Autorun_Collection/Export_Report.txt` で結果を確認します。
@@ -90,7 +103,7 @@ Rust 2021 / `eframe` (egui) 0.32.3 / `image` 0.25 / `png` 0.17 / `windows-sys` 0
 
 ## バージョン履歴
 
-変更履歴は [CHANGELOG.md](CHANGELOG.md) にまとめています。ビルドの警告 `float_literal_f32_fallback` は、該当する数値リテラルを `1.0_f32` と明示して解消を図りました（コンパイル未検証）。
+変更履歴は [CHANGELOG.md](CHANGELOG.md) に、最新リリースの概要は [RELEASE_NOTES_v1.3.0.md](RELEASE_NOTES_v1.3.0.md) にまとめています。ビルドの警告 `float_literal_f32_fallback` は、該当する数値リテラルを `1.0_f32` と明示して解消を図りました（コンパイル未検証）。
 
 ## ライセンス
 

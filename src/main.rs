@@ -221,7 +221,7 @@ fn export(drives: &[Drive], dest: &Path, overwrite: bool) -> String {
     }
     let (mut ok, mut skipped, mut replaced) = (0usize, 0usize, 0usize);
     let mut errors: Vec<String> = vec![];
-    let mut report = String::from("Kiseki Autorun Vault v1.2.0 - Export Report\n");
+    let mut report = String::from("Kiseki Autorun Vault v1.3.0 - Export Report\n");
     if let Ok(now) = SystemTime::now().duration_since(UNIX_EPOCH) {
         report.push_str(&format!("Unix timestamp: {}\n", now.as_secs()));
     }
@@ -343,6 +343,102 @@ fn card(fill: egui::Color32) -> egui::Frame {
         .corner_radius(14).inner_margin(12.0)
 }
 
+// Allocate an EXACTLY sized card.  The old frame + horizontal_wrapped layout
+// could inherit the scroll viewport height and stretch cards to hundreds of pts.
+// Painting in the reserved rectangle prevents both row-height expansion and overlap.
+fn draw_drive_card(ui: &mut egui::Ui, d: &mut Drive, active: bool, width: f32) -> bool {
+    const HEIGHT: f32 = 148.0;
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(width, HEIGHT), egui::Sense::click());
+    let painter = ui.painter_at(rect);
+    let ink = egui::Color32::from_rgb(32, 62, 83);
+    let muted = egui::Color32::from_rgb(100, 126, 145);
+    let accent = egui::Color32::from_rgb(72, 153, 194);
+    let green = egui::Color32::from_rgb(36, 139, 108);
+    let round = egui::CornerRadius::same(12);
+    let fill = if active {
+        egui::Color32::from_rgb(229, 244, 251)
+    } else {
+        egui::Color32::WHITE
+    };
+    painter.rect_filled(rect.shrink(1.0), round, fill);
+    painter.rect_stroke(rect.shrink(1.0), round,
+        egui::Stroke::new(if active { 2.0_f32 } else { 1.0_f32 },
+            if active { accent } else { egui::Color32::from_rgb(215, 228, 236) }),
+        egui::StrokeKind::Inside);
+    let box_rect = egui::Rect::from_min_size(
+        egui::pos2(rect.min.x + 11.0, rect.min.y + 11.0), egui::vec2(22.0, 22.0));
+    // Draw the selection control in the same fixed rectangle; adding a normal
+    // widget here would move the horizontal layout cursor and could reintroduce
+    // uneven spacing in a card row.
+    painter.rect_filled(box_rect.shrink(2.0), 4,
+        if d.selected { accent } else { egui::Color32::WHITE });
+    painter.rect_stroke(box_rect.shrink(2.0), 4,
+        egui::Stroke::new(1.3_f32, accent), egui::StrokeKind::Inside);
+    if d.selected {
+        painter.line_segment([
+            egui::pos2(box_rect.left() + 6.0, box_rect.center().y),
+            egui::pos2(box_rect.left() + 10.0, box_rect.bottom() - 6.0),
+        ], egui::Stroke::new(2.0_f32, egui::Color32::WHITE));
+        painter.line_segment([
+            egui::pos2(box_rect.left() + 10.0, box_rect.bottom() - 6.0),
+            egui::pos2(box_rect.right() - 5.0, box_rect.top() + 6.0),
+        ], egui::Stroke::new(2.0_f32, egui::Color32::WHITE));
+    }
+    let title_x = rect.left() + 42.0;
+    let title = format!("{}: {}", d.letter, d.name);
+    // Keep long volume names inside their own card instead of painting over neighbors.
+    let max_chars = ((width - 58.0) / 14.0_f32).floor().max(5.0) as usize;
+    let shown_title = if title.chars().count() > max_chars {
+        format!("{}…", title.chars().take(max_chars.saturating_sub(1)).collect::<String>())
+    } else { title };
+    painter.text(egui::pos2(title_x, rect.top() + 12.0),
+        egui::Align2::LEFT_TOP, shown_title,
+        egui::FontId::proportional(14.0), ink);
+    painter.text(egui::pos2(title_x, rect.top() + 38.0),
+        egui::Align2::LEFT_TOP, format!("{} · {}", d.drive_type, d.fs_type),
+        egui::FontId::proportional(11.0), muted);
+    let bar_rect = egui::Rect::from_min_size(
+        egui::pos2(rect.left() + 13.0, rect.top() + 72.0),
+        egui::vec2((width - 26.0).max(5.0), 8.0));
+    painter.rect_filled(bar_rect, 4, egui::Color32::from_rgb(228, 236, 241));
+    let capacity_line = if let (Some(total), Some(free)) = (d.capacity, d.free) {
+        let fraction = (if total == 0 { 0.0_f32 } else {
+            ((total.saturating_sub(free)) as f64 / total as f64) as f32
+        }).clamp(0.0_f32, 1.0_f32);
+        if fraction > 0.0 {
+            let used_bar = egui::Rect::from_min_size(bar_rect.min,
+                egui::vec2(bar_rect.width() * fraction, bar_rect.height()));
+            painter.rect_filled(used_bar, 4, accent);
+        }
+        format!("{} / {} 使用", readable_size(total.saturating_sub(free)), readable_size(total))
+    } else {
+        "容量情報なし".to_owned()
+    };
+    painter.text(egui::pos2(rect.left() + 13.0, rect.top() + 87.0),
+        egui::Align2::LEFT_TOP, capacity_line,
+        egui::FontId::proportional(11.0), muted);
+    painter.text(egui::pos2(rect.left() + 13.0, rect.top() + 119.0),
+        egui::Align2::LEFT_TOP, if d.ico.is_some() { "● ICO 検出" } else { "○ ICO なし" },
+        egui::FontId::proportional(11.0),
+        if d.ico.is_some() { green } else { muted });
+    painter.text(egui::pos2(rect.left() + 109.0, rect.top() + 119.0),
+        egui::Align2::LEFT_TOP, if d.inf.is_some() { "● INF 検出" } else { "○ INF なし" },
+        egui::FontId::proportional(11.0),
+        if d.inf.is_some() { green } else { muted });
+    // Checkbox click toggles export selection; clicking elsewhere changes preview.
+    if response.clicked() {
+        if response.interact_pointer_pos()
+            .is_some_and(|pos| box_rect.expand(3.0).contains(pos)) {
+            d.selected = !d.selected;
+            false
+        } else {
+            true
+        }
+    } else {
+        false
+    }
+}
+
 struct App {
     drives: Vec<Drive>,
     active: Option<char>,
@@ -458,7 +554,6 @@ impl eframe::App for App {
         let ink = egui::Color32::from_rgb(32, 62, 83);
         let muted = egui::Color32::from_rgb(102, 125, 144);
         let white = egui::Color32::WHITE;
-        let blue = egui::Color32::from_rgb(79, 153, 194);
         let tint = egui::Color32::from_rgb(231, 243, 250);
         let green = egui::Color32::from_rgb(40, 136, 106);
 
@@ -472,7 +567,7 @@ impl eframe::App for App {
                     ui.vertical(|ui| {
                         ui.label(egui::RichText::new("Kiseki Autorun Vault")
                             .size(23.0).strong().color(ink));
-                        ui.label(egui::RichText::new("キセキのオートラン書庫  ·  Windows 11  ·  v1.2.0")
+                        ui.label(egui::RichText::new("キセキのオートラン書庫  ·  Windows 11  ·  v1.3.0")
                             .size(12.0).color(muted));
                     });
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -487,7 +582,7 @@ impl eframe::App for App {
             });
 
         egui::TopBottomPanel::bottom("status")
-            .resizable(true).default_height(80.0).min_height(46.0).max_height(180.0)
+            .resizable(false).default_height(70.0).min_height(70.0).max_height(70.0)
             .frame(egui::Frame::default()
                 .fill(egui::Color32::from_rgb(229, 241, 248))
                 .inner_margin(egui::Margin::symmetric(16, 7)))
@@ -498,119 +593,113 @@ impl eframe::App for App {
                         .size(11.0).color(muted));
                 });
                 egui::ScrollArea::vertical().id_salt("status-log")
-                    .auto_shrink([false, false]).show(ui, |ui| {
+                    .max_height(34.0).auto_shrink([false, false]).show(ui, |ui| {
                         ui.label(egui::RichText::new(&self.status).size(12.0).color(ink));
                     });
             });
 
-        // RESIZABLE UPPER PARTITION-CARD PANEL
-        egui::TopBottomPanel::top("drive_card_panel")
-            .resizable(true).default_height(350.0).min_height(200.0).max_height(580.0)
-            .frame(egui::Frame::default()
-                .fill(egui::Color32::from_rgb(244, 248, 251))
-                .inner_margin(egui::Margin::symmetric(16, 10)))
-            .show(ctx, |ui| {
-                let detected: usize = self.drives.iter().map(Drive::detected).sum();
-                let selected = self.drives.iter().filter(|d| d.selected).count();
-                ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new("パーティション一覧")
-                        .size(17.0).strong().color(ink));
-                    ui.label(egui::RichText::new(format!("{}ドライブ  ·  {}ファイル  ·  {}選択中",
-                        self.drives.len(), detected, selected)).color(muted).size(12.0));
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.checkbox(&mut self.show_only_found, "検出ありのみ");
-                    });
-                });
-                ui.horizontal(|ui| {
-                    ui.add(egui::TextEdit::singleline(&mut self.filter)
-                        .hint_text("ドライブ文字・ボリューム名を検索")
-                        .desired_width(310.0));
-                    if ui.small_button("すべて選択").clicked() {
-                        for d in &mut self.drives { d.selected = true; }
-                    }
-                    if ui.small_button("検出分を選択").clicked() {
-                        for d in &mut self.drives { d.selected = d.detected() > 0; }
-                    }
-                    if ui.small_button("選択解除").clicked() {
-                        for d in &mut self.drives { d.selected = false; }
-                    }
-                });
-                ui.add_space(5.0);
-                let needle = self.filter.trim().to_lowercase();
-                egui::ScrollArea::vertical().id_salt("partition-cards")
-                    .auto_shrink([false, false]).show(ui, |ui| {
-                        let gap = 9.0_f32;
-                        ui.spacing_mut().item_spacing = egui::vec2(gap, gap);
-                        let available = ui.available_width().max(240.0);
-                        let columns = (((available + gap) / 264.0).floor() as usize).clamp(1, 6);
-                        let card_width = ((available - gap * (columns - 1) as f32)
-                            / columns as f32).max(190.0);
-                        ui.horizontal_wrapped(|ui| {
-                            for d in &mut self.drives {
-                                if self.show_only_found && d.detected() == 0 { continue; }
-                                if !needle.is_empty() && !format!("{}: {}", d.letter, d.name)
-                                    .to_lowercase().contains(&needle) { continue; }
-                                let active = self.active == Some(d.letter);
-                                let fill = if active { tint } else { white };
-                                let stroke_color = if active { blue }
-                                    else { egui::Color32::from_rgb(212, 225, 234) };
-                                egui::Frame::default().fill(fill)
-                                    .stroke(egui::Stroke::new(if active { 1.8_f32 } else { 1.0_f32 }, stroke_color))
-                                    .corner_radius(13).inner_margin(11.0)
-                                    .show(ui, |ui| {
-                                        ui.set_width(card_width - 24.0);
-                                        ui.set_min_height(127.0);
-                                        ui.horizontal(|ui| {
-                                            ui.checkbox(&mut d.selected, "");
-                                            if ui.selectable_label(active,
-                                                egui::RichText::new(format!("{}: {}", d.letter, d.name))
-                                                    .strong().size(14.0).color(ink)).clicked() {
-                                                self.active = Some(d.letter);
-                                            }
-                                        });
-                                        ui.label(egui::RichText::new(format!("{} · {}",
-                                            d.drive_type, d.fs_type)).size(11.0).color(muted));
-                                        if let (Some(total), Some(free)) = (d.capacity, d.free) {
-                                            let usage = if total == 0 { 0.0_f32 } else {
-                                                (1.0_f32 - free as f32 / total as f32)
-                                                    .clamp(0.0_f32, 1.0_f32)
-                                            };
-                                            ui.add(egui::ProgressBar::new(usage)
-                                                .desired_width(ui.available_width())
-                                                .fill(blue));
-                                            ui.label(egui::RichText::new(format!("{} / {} 使用",
-                                                readable_size(total.saturating_sub(free)),
-                                                readable_size(total))).size(10.0).color(muted));
-                                        } else {
-                                            ui.label(egui::RichText::new("容量情報なし").size(11.0).color(muted));
-                                        }
-                                        ui.horizontal(|ui| {
-                                            ui.label(egui::RichText::new(if d.ico.is_some() { "ICO ✓" } else { "ICO —" })
-                                                .size(11.0).color(if d.ico.is_some() { green } else { muted }));
-                                            ui.label(egui::RichText::new(if d.inf.is_some() { "INF ✓" } else { "INF —" })
-                                                .size(11.0).color(if d.inf.is_some() { green } else { muted }));
-                                        });
-                                    });
-                            }
-                        });
-                    });
-            });
-
-        // LOWER DETAILS PANEL: selected drive icon + volume info + INF preview.
+        // v1.3.0: Keep both panes in the CENTRAL panel.  The upper list is
+        // given a bounded scroll viewport; it must not determine panel height.
+        // Each card allocates an exact 148pt rectangle and is painted inside it.
         egui::CentralPanel::default()
             .frame(egui::Frame::default()
                 .fill(egui::Color32::from_rgb(244, 248, 251))
-                .inner_margin(egui::Margin::symmetric(16, 10)))
+                .inner_margin(egui::Margin::symmetric(16, 8)))
             .show(ctx, |ui| {
+                let available_height = ui.available_height();
+                let content_width = ui.available_width();
+                // Reserve at least 240pt for details on normal-sized windows.
+                let max_upper = (available_height - 240.0_f32).max(180.0_f32);
+                let upper_height = (available_height * 0.46_f32).clamp(180.0_f32, max_upper);
+                ui.allocate_ui_with_layout(
+                    egui::vec2(content_width, upper_height),
+                    egui::Layout::top_down(egui::Align::Min),
+                    |ui| {
+                        let detected: usize = self.drives.iter().map(Drive::detected).sum();
+                        let selected = self.drives.iter().filter(|d| d.selected).count();
+                        ui.horizontal(|ui| {
+                            ui.label(egui::RichText::new("パーティション一覧")
+                                .size(17.0).strong().color(ink));
+                            ui.label(egui::RichText::new(format!(
+                                "{}ドライブ · {}ファイル · {}選択中",
+                                self.drives.len(), detected, selected
+                            )).color(muted).size(12.0));
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                ui.checkbox(&mut self.show_only_found, "検出ありのみ");
+                            });
+                        });
+                        ui.horizontal(|ui| {
+                            ui.add(egui::TextEdit::singleline(&mut self.filter)
+                                .hint_text("ドライブ文字・ボリューム名を検索")
+                                .desired_width(270.0));
+                            if ui.small_button("すべて選択").clicked() {
+                                for d in &mut self.drives { d.selected = true; }
+                            }
+                            if ui.small_button("検出分を選択").clicked() {
+                                for d in &mut self.drives { d.selected = d.detected() > 0; }
+                            }
+                            if ui.small_button("選択解除").clicked() {
+                                for d in &mut self.drives { d.selected = false; }
+                            }
+                        });
+                        ui.add_space(5.0);
+                        // Bound the scroll viewport to the rest of the upper pane.
+                        let scroll_height = ui.available_height().max(65.0_f32);
+                        let needle = self.filter.trim().to_lowercase();
+                        let indices: Vec<usize> = self.drives.iter().enumerate()
+                            .filter(|(_, d)| !self.show_only_found || d.detected() > 0)
+                            .filter(|(_, d)| needle.is_empty() ||
+                                format!("{}: {}", d.letter, d.name).to_lowercase().contains(&needle))
+                            .map(|(idx, _)| idx).collect();
+                        egui::ScrollArea::vertical()
+                            .id_salt("partition-cards-v130")
+                            .max_height(scroll_height)
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| {
+                                let gap = 10.0_f32;
+                                let width = (ui.available_width() - 12.0_f32).max(220.0_f32);
+                                // 245pt minimum card width: 3-5 columns on desktop.
+                                let columns = (((width + gap) / 255.0_f32).floor() as usize)
+                                    .clamp(1, 6);
+                                let card_width = (width - gap * (columns - 1) as f32)
+                                    / columns as f32;
+                                let mut next_active = self.active;
+                                if indices.is_empty() {
+                                    ui.label(egui::RichText::new("条件に一致するドライブがありません。")
+                                        .color(muted));
+                                }
+                                ui.spacing_mut().item_spacing = egui::vec2(gap, gap);
+                                for row in indices.chunks(columns) {
+                                    ui.horizontal(|ui| {
+                                        ui.spacing_mut().item_spacing.x = gap;
+                                        for &idx in row {
+                                            let drive = &mut self.drives[idx];
+                                            let letter = drive.letter;
+                                            let active = next_active == Some(letter);
+                                            if draw_drive_card(ui, drive, active, card_width) {
+                                                next_active = Some(letter);
+                                            }
+                                        }
+                                    });
+                                }
+                                self.active = next_active;
+                            });
+                    },
+                );
+
+                ui.add_space(4.0);
+                ui.separator();
+                ui.add_space(4.0);
                 ui.horizontal(|ui| {
                     ui.label(egui::RichText::new("詳細情報プレビュー")
-                        .size(18.0).strong().color(ink));
-                    ui.label(egui::RichText::new("上のカードのドライブ名をクリックして表示を切り替え")
+                        .size(17.0).strong().color(ink));
+                    ui.label(egui::RichText::new("上のカードをクリックすると表示を切り替えます")
                         .size(11.0).color(muted));
                 });
-                ui.add_space(3.0);
                 let active = self.drives.iter().find(|d| Some(d.letter) == self.active);
-                egui::ScrollArea::vertical().id_salt("details-scroll")
+                let details_height = ui.available_height().max(80.0_f32);
+                egui::ScrollArea::vertical().id_salt("details-scroll-v130")
+                    .max_height(details_height)
                     .auto_shrink([false, false]).show(ui, |ui| {
                         if let Some(d) = active {
                             ui.columns(2, |cols| {
@@ -626,8 +715,7 @@ impl eframe::App for App {
                                                 } else {
                                                     ui.allocate_ui(egui::vec2(112.0, 112.0), |ui| {
                                                         ui.centered_and_justified(|ui| {
-                                                            ui.label(egui::RichText::new("ICOなし")
-                                                                .color(muted));
+                                                            ui.label(egui::RichText::new("ICOなし").color(muted));
                                                         });
                                                     });
                                                 }
@@ -635,7 +723,7 @@ impl eframe::App for App {
                                         ui.vertical(|ui| {
                                             ui.label(egui::RichText::new(format!("{}: {}", d.letter, d.name))
                                                 .size(19.0).strong().color(ink));
-                                            ui.label(format!("{}  ·  {}", d.drive_type, d.fs_type));
+                                            ui.label(format!("{} · {}", d.drive_type, d.fs_type));
                                             ui.monospace(format!("{}", d.root().display()));
                                             if let (Some(total), Some(free)) = (d.capacity, d.free) {
                                                 ui.label(format!("容量: {}", readable_size(total)));
@@ -664,9 +752,12 @@ impl eframe::App for App {
                                         }
                                         ui.add_space(5.0);
                                     }
-                                    if !d.warning.is_empty() { ui.colored_label(egui::Color32::DARK_RED, &d.warning); }
+                                    if !d.warning.is_empty() {
+                                        ui.colored_label(egui::Color32::DARK_RED, &d.warning);
+                                    }
                                     if let Some(err) = self.icon_errors.get(&d.letter) {
-                                        ui.colored_label(egui::Color32::DARK_RED, format!("ICOプレビュー不可: {err}"));
+                                        ui.colored_label(egui::Color32::DARK_RED,
+                                            format!("ICOプレビュー不可: {err}"));
                                     }
                                 });
                                 card(white).show(right, |ui| {
@@ -681,8 +772,8 @@ impl eframe::App for App {
                                     if d.inf.is_none() {
                                         ui.colored_label(muted, "Autorun.inf はありません。");
                                     } else {
-                                        egui::ScrollArea::vertical().id_salt("inf-preview")
-                                            .max_height(270.0).show(ui, |ui| {
+                                        egui::ScrollArea::vertical().id_salt("inf-preview-v130")
+                                            .max_height(260.0).show(ui, |ui| {
                                                 ui.add(egui::Label::new(egui::RichText::new(&d.inf_preview)
                                                     .monospace().size(12.0).color(ink)).wrap());
                                             });
@@ -737,7 +828,7 @@ fn main() -> eframe::Result<()> {
     let (width, height) = logo.dimensions();
     let icon = egui::IconData { rgba: logo.into_raw(), width, height };
     eframe::run_native(
-        "Kiseki Autorun Vault v1.2.0",
+        "Kiseki Autorun Vault v1.3.0",
         eframe::NativeOptions {
             viewport: egui::ViewportBuilder::default()
                 .with_inner_size([1380.0, 920.0])
