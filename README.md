@@ -6,6 +6,15 @@
 
 **Kiseki Autorun Vault** は、Windows 11でドライブ文字が割り当てられたボリュームを調べ、ルート直下の `Autorun.ico` / `Autorun.inf` をプレビュー・一括保存するデスクトップアプリです。日本語名：**キセキのオートラン書庫**。
 
+## スクリーンショット（v1.3.0）
+
+![Kiseki Autorun Vault v1.3.0 - Windows 11実行画面](assets/screenshots/v1.3.0-main-window.png)
+
+Windows 11上で撮影された **v1.3.0の実際の画面** です。上段にスクロール可能なパーティションカード一覧、下段に選択したドライブのアイコン・容量・Autorunファイル属性・`Autorun.inf` の内容を表示します。
+
+> 画面内のドライブ名・アイコン・容量・検出結果は撮影環境の一例です。スクリーンショットはユーザー提供のものです。
+
+
 ![Rust](https://img.shields.io/badge/Rust-2021-orange) ![Windows](https://img.shields.io/badge/Windows-11-blue) ![Version](https://img.shields.io/badge/version-1.3.0-teal) ![License](https://img.shields.io/badge/license-CC%20BY--SA%204.0-lightgrey)
 
 ## 主な機能
